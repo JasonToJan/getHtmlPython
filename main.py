@@ -252,7 +252,7 @@ class App:
                 self.url_list.insert(tk.END, stripped_line)
         for i, url in enumerate(self.urls):
             # 在 "two" 列中插入 "Button" 文本
-            self.tree.insert("", i, text="第" + str(i) + "个链接", values=(url, "选择规则文件"))
+            self.tree.insert("", i, text="第" + str(i+1) + "个链接", values=(url, "选择规则文件"))
 
     def upload_file(self):
         filename = filedialog.askopenfilename()
@@ -264,7 +264,7 @@ class App:
             self.url_list.insert(tk.END, url)
         for i, url in enumerate(self.urls):
             # 在 "two" 列中插入 "Button" 文本
-            self.tree.insert("", i, text="第" + str(i) + "个链接", values=(url, "选择规则文件"))
+            self.tree.insert("", i, text="第" + str(i+1) + "个链接", values=(url, "选择规则文件"))
 
     def get_html(self):
         # Check if output directory exists, if not, create it
