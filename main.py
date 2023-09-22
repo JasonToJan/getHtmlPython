@@ -22,11 +22,13 @@ import codecs
 from tkinter import ttk
 from functools import partial
 from tkinter import messagebox
-
+import importlib.util
 
 
 class App:
     def __init__(self, root):
+        self.modules = {}  # 用于跟踪已经加载的模块
+
         self.root = root
         self.root.title("网页内容提取")
 
@@ -48,10 +50,6 @@ class App:
 
         self.clear_button = tk.Button(left_frame, text="清空数据", command=self.clear_urls)
         self.clear_button.pack(padx=16, pady=4)
-
-        # 创建一个用于显示loading信息的标签
-        self.loading_label = tk.Label(left_frame)
-        self.loading_label.pack()
 
         # 创建一个水平滚动条
         xscrollbar = tk.Scrollbar(left_frame, orient='horizontal')
@@ -93,11 +91,14 @@ class App:
         button2 = tk.Button(button_frame, text='编辑域名映射关系', command=self.handle_button2_click)
         button3 = tk.Button(button_frame, text='自动匹配现有规则', command=self.handle_button3_click)
         button4 = tk.Button(button_frame, text="导出图片", command=self.start_export_images)
+        # 创建一个用于显示loading信息的标签
+        self.loading_label = tk.Label(button_frame)
 
         button1.pack(side='left', padx=5, pady=5)  # padx和pady参数用于设置按钮的外边距
         button2.pack(side='left', padx=5, pady=5)
         button3.pack(side='left', padx=5, pady=5)
         button4.pack(side='left', padx=5, pady=5)
+        self.loading_label.pack(side='left', padx=5, pady=5)
 
         button_frame.pack(side='top', fill='x')
 
@@ -113,18 +114,17 @@ class App:
         self.tree.column("one", width=320)
         # self.tree.column("two", width=100)
         self.tree.heading("one", text="链接")
-        self.tree.heading("two", text="配置")
+        self.tree.heading("two", text="解析方式")
 
         for i, url in enumerate(self.urls):
             # 在 "two" 列中插入 "Button" 文本
-            self.tree.insert("", i, text="第" + str(i) + "个链接", values=(url, "选择规则文件"))
+            self.tree.insert("", i, text="第" + str(i+1) + "个链接", values=(url, "选择规则文件"))
         # for i in range(10):
         #     # 在 "two" 列中插入 "Button" 文本
         #     self.tree.insert("", i, text="第" + str(i) +"个链接", values=("https://", "选择规则文件"))
         # 绑定 <Button-1> 事件
         self.tree.bind("<Button-1>", self.on_tree_click)
         self.tree.pack(side='top', fill='both', expand=True)
-
 
         text1_frame.grid(row=1, column=0, sticky='nsew')  # 使用'nsew'使得text1_frame填充其所在的单元格
 
@@ -169,7 +169,7 @@ class App:
 
             if filename:  # 如果文件名非空
                 try:
-                    with open(filename, 'w') as f:
+                    with open(filename, 'w', encoding='utf-8') as f:
                         f.write(content)
                     messagebox.showinfo("Success", "File saved successfully")
                     new_window.destroy()
@@ -231,7 +231,6 @@ class App:
                 if key in url:
                     # 更新该行的第二个值为字典的值
                     self.tree.item(item, values=(url, mapper[key]))
-
 
     def on_tree_click(self, event):
         # 获取点击的 item 的 id 和列
@@ -309,7 +308,7 @@ class App:
         if not os.path.exists('outputImage'):
             os.makedirs('outputImage')
 
-        file_num = 1
+        # file_num = 1
         for url in self.urls:
             driver.get(url)
 
@@ -331,7 +330,7 @@ class App:
 
             # 保存页面源码到文件
             print("开始保存页面源码到文件...")
-            with open(f'outputHtml/{file_num}.html', 'w', encoding='utf-8') as f:
+            with open(f'outputHtml/{self.format_url(url)}.txt', 'w', encoding='utf-8') as f:
                 f.write(page_source)
 
             # # 使用BeautifulSoup解析页面并提取所有图片链接
@@ -339,73 +338,73 @@ class App:
             # img_tags = soup.find_all('img')
             # img_urls = [img['src'] for img in img_tags if 'src' in img.attrs]
 
-            soup = BeautifulSoup(page_source, 'html.parser')
-            img_tags = soup.find_all('img')
-            img_urls = []
-            for img in img_tags:
-                if 'src' in img.attrs and img['src'].startswith('http') and not re.search(r'\.(svg|gif)',
-                                                                                          img['src']) and not img[
-                    'src'].endswith('1x1.png'):
-                    url = img['src']
-                    img_urls.append(url)
-
-            # Find all 'source' tags
-            sources = soup.find_all('source')
-
-            # Iterate over all 'source' tags
-            for source in sources:
-                # Check if the tag has a 'srcset' attribute
-                if 'srcset' in source.attrs:
-                    # Extract the value of the 'srcset' attribute
-                    srcset_value = source['srcset']
-                    # Split the 'srcset' attribute value
-                    srcset_parts = srcset_value.split(', ')
-                    # If the 'srcset' attribute value contains at least two parts, then extract the second URL
-                    if len(srcset_parts) >= 2:
-                        url = srcset_parts[1].split(' ')[0]
-                        # Check if the URL ends with .png, .jpg or .jpeg
-                        img_urls.append(url)
-
-            # 只获取前50张图片的链接
-            img_urls = img_urls[:50]
-
-            # 保存图片链接到文件
-            print("开始保存图片链接到文件...")
-            with open(f'outputUrl/{file_num}.txt', 'w', encoding='utf-8') as f:
-                for img_url in img_urls:
-                    f.write(img_url + '\n')
-
-            # print("开始下载图片了哦...")
-            # # 从文件中读取图片链接
-            # with open(f'outputUrl/{file_num}.txt', 'r', encoding='utf-8') as f:
-            #     img_urls = [line.strip() for line in f]
+            # soup = BeautifulSoup(page_source, 'html.parser')
+            # img_tags = soup.find_all('img')
+            # img_urls = []
+            # for img in img_tags:
+            #     if 'src' in img.attrs and img['src'].startswith('http') and not re.search(r'\.(svg|gif)',
+            #                                                                               img['src']) and not img[
+            #         'src'].endswith('1x1.png'):
+            #         url = img['src']
+            #         img_urls.append(url)
             #
-            # if not os.path.exists(f'outputImage/{file_num}'):
-            #     os.makedirs(f'outputImage/{file_num}')
+            # # Find all 'source' tags
+            # sources = soup.find_all('source')
             #
-            # for i, img_url in enumerate(img_urls):
-            #     # 下载图片
-            #     response = requests.get(img_url, stream=True)
-            #     response.raise_for_status()
+            # # Iterate over all 'source' tags
+            # for source in sources:
+            #     # Check if the tag has a 'srcset' attribute
+            #     if 'srcset' in source.attrs:
+            #         # Extract the value of the 'srcset' attribute
+            #         srcset_value = source['srcset']
+            #         # Split the 'srcset' attribute value
+            #         srcset_parts = srcset_value.split(', ')
+            #         # If the 'srcset' attribute value contains at least two parts, then extract the second URL
+            #         if len(srcset_parts) >= 2:
+            #             url = srcset_parts[1].split(' ')[0]
+            #             # Check if the URL ends with .png, .jpg or .jpeg
+            #             img_urls.append(url)
             #
-            #     # 将图片保存到本地
-            #     img_path = f'outputImage/{file_num}/img_{i}.jpg'
-            #     with open(img_path, 'wb') as out_file:
-            #         out_file.write(response.content)
+            # # 只获取前50张图片的链接
+            # img_urls = img_urls[:50]
             #
-            #     # 使用PIL库打开图片并获取尺寸
-            #     img = Image.open(img_path)
-            #     width, height = img.size
+            # # 保存图片链接到文件
+            # print("开始保存图片链接到文件...")
+            # with open(f'outputUrl/{file_num}.txt', 'w', encoding='utf-8') as f:
+            #     for img_url in img_urls:
+            #         f.write(img_url + '\n')
             #
-            #     # 关闭打开的图片
-            #     img.close()
-            #
-            #     # 如果图片尺寸小于100*150，删除图片
-            #     if width < 100 or height < 150:
-            #         os.remove(img_path)
+            # # print("开始下载图片了哦...")
+            # # # 从文件中读取图片链接
+            # # with open(f'outputUrl/{file_num}.txt', 'r', encoding='utf-8') as f:
+            # #     img_urls = [line.strip() for line in f]
+            # #
+            # # if not os.path.exists(f'outputImage/{file_num}'):
+            # #     os.makedirs(f'outputImage/{file_num}')
+            # #
+            # # for i, img_url in enumerate(img_urls):
+            # #     # 下载图片
+            # #     response = requests.get(img_url, stream=True)
+            # #     response.raise_for_status()
+            # #
+            # #     # 将图片保存到本地
+            # #     img_path = f'outputImage/{file_num}/img_{i}.jpg'
+            # #     with open(img_path, 'wb') as out_file:
+            # #         out_file.write(response.content)
+            # #
+            # #     # 使用PIL库打开图片并获取尺寸
+            # #     img = Image.open(img_path)
+            # #     width, height = img.size
+            # #
+            # #     # 关闭打开的图片
+            # #     img.close()
+            # #
+            # #     # 如果图片尺寸小于100*150，删除图片
+            # #     if width < 100 or height < 150:
+            # #         os.remove(img_path)
 
             # 继续下一个链接
-            file_num += 1
+            # file_num += 1
 
         # 不要忘记关闭浏览器
         driver.quit()
@@ -422,7 +421,7 @@ class App:
         # 创建一个临时目录
         with tempfile.TemporaryDirectory() as temp_dir:
             for i, (url, html) in enumerate(self.htmls.items()):
-                filename = os.path.join(temp_dir, f'{i}.html')
+                filename = os.path.join(temp_dir, f'{self.format_url(url)}.txt')
                 with open(filename, 'w', encoding='utf-8') as file:
                     file.write(html)
 
@@ -451,35 +450,27 @@ class App:
         tkinter.messagebox.showinfo("导出完成", "所有图片已经成功导出并打包成zip文件。")
 
     def export_images(self):
+        mapper = self.create_dict_from_file('mapper/map.txt')
+
         # 遍历outputUrl目录中的所有文件
-        for filename in os.listdir('outputUrl'):
-            # 获取文件名的基本部分（没有扩展名）
+        for filename in os.listdir('outputHtml'):
+            html_file_path = os.path.join('outputHtml', filename)  # 连接目录名和文件名
             basename = os.path.splitext(filename)[0]
-            # 创建一个新的目录来保存这个文件的图片
-            os.makedirs(f'outputImage/{basename}', exist_ok=True)
-            print('开始读取图片', basename)
-            # 打开文件并读取所有的URL
-            with open(f'outputUrl/{filename}', 'r') as f:
-                urls = f.readlines()
+            match, value = self.match_basename_with_mapper(mapper, basename)
+            if match:
+                print(f'Successfully matched with value: {value}')
+                if not value.endswith('.py'):  # 检查文件名是否以'.py'结尾
+                    value += '.py'  # 如果不是，添加'.py'
+                current_dir = os.getcwd()  # 获取当前目录
+                file_dir = os.path.join(current_dir, 'python')  # 连接当前目录和'python'文件夹
+                file_path = os.path.join(file_dir, value)  # 连接'python'文件夹和文件名
+                print('目标解析文件：' + file_path)
+                self.some_function(file_path, html_file_path)
 
-            # 遍历URL并下载图片
-            for url in urls:
-                url = url.strip()  # 去掉URL两边的空白字符
-                # 下载图片并保存到新的目录中
-                response = requests.get(url, stream=True)
-                if response.status_code == 200:
-                    file_name = url.split("/")[-1]
-                    output_path = f'outputImage/{basename}/{file_name}'
-                    with open(output_path, 'wb') as out_file:
-                        shutil.copyfileobj(response.raw, out_file)
-                    # 检查文件扩展名
-                    file_extension = os.path.splitext(output_path)[1]
-                    valid_extensions = ['.jpg', '.jpeg', '.png']
-                    if file_extension not in valid_extensions:
-                        os.rename(output_path, output_path + '.jpg')
-                del response
+            else:
+                print('No match found')
 
-            # 让用户选择zip文件的保存位置
+        # 让用户选择zip文件的保存位置
         zip_file_path = tkinter.filedialog.asksaveasfilename(defaultextension=".zip")
 
         # 创建一个zip文件并将所有的图片添加进去
@@ -491,6 +482,13 @@ class App:
         print('图片导出完毕，已打包成zip文件.')
         # 当所有图片都已经导出，调用finish_export_images方法
         self.finish_export_images()
+
+    def match_basename_with_mapper(self, mapper, basename):
+        for key, value in mapper.items():
+            modified_key = key.replace('http://', '').replace('https://', '').replace('/', '_').replace('.', '_').replace('&', '_').replace('?', '_')
+            if modified_key in basename:
+                return True, value
+        return False, None
 
     def clear_urls(self):
         self.urls.clear()
@@ -522,6 +520,35 @@ class App:
                 key, value = parts
                 mapper[key] = value
         return mapper
+
+    def format_url(self, url):
+        url = url.replace('https://', '').replace('http://', '')
+        url = url.replace('/', '_').replace('?', '_').replace('.', '_').replace('&', '_')
+        return url
+
+    # 动态加载外部python文件
+    def some_function(self, module_path, html_file_path):
+        print("module_path=" + module_path + " html_path=" + html_file_path)
+        # 检查模块是否已经在字典中
+        if module_path in self.modules:
+            module = self.modules[module_path]
+            print("加载已存在的" + module_path + "成功")
+        else:
+            # 从文件路径中提取文件名（不包括扩展名）
+            module_name = os.path.splitext(os.path.basename(module_path))[0]
+            # 加载模块
+            spec = importlib.util.spec_from_file_location(module_name, module_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            # 将模块添加到字典中
+            self.modules[module_path] = module
+            print("动态加载" + module_path + "成功")
+
+        # 创建类的实例并调用方法
+        downloader = module.ImageDownloader()
+        downloader.getImage(html_file_path)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
